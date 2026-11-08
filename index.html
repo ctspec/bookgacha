@@ -85,6 +85,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 
   <div class="controls">
     <button id="draw" type="button">本をひく</button>
+    <label><input type="checkbox" id="withCover" checked> 表紙がある本だけ</label>
     <label><input type="checkbox" id="recent"> 最近3年の本だけ</label>
   </div>
 
@@ -102,6 +103,7 @@ const MAX_BATCHES = 12;    // 見つからない場合の最大試行回数
 
 const $draw = document.getElementById("draw");
 const $recent = document.getElementById("recent");
+const $withCover = document.getElementById("withCover");
 const $result = document.getElementById("result");
 
 // ISBN-13 のチェックディジット
@@ -144,12 +146,13 @@ function isRecent(pubdate) {
   return year >= new Date().getFullYear() - 3;
 }
 
-async function pickBook(onlyRecent) {
+async function pickBook(onlyRecent, onlyWithCover) {
   for (let n = 0; n < MAX_BATCHES; n++) {
     const candidates = [];
     for (let i = 0; i < BATCH_SIZE; i++) candidates.push(randomIsbn13());
     let hits = await lookup(candidates);
     if (onlyRecent) hits = hits.filter(function (h) { return isRecent(h.summary.pubdate); });
+    if (onlyWithCover) hits = hits.filter(function (h) { return h.summary.cover; });
     if (hits.length) return hits[Math.floor(Math.random() * hits.length)].summary;
   }
   return null;
@@ -163,18 +166,22 @@ function render(book) {
   const wrap = document.createElement("article");
   wrap.className = "book";
 
+  function placeholder() {
+    const ph = document.createElement("div");
+    ph.className = "nocover";
+    ph.textContent = "表紙画像なし";
+    return ph;
+  }
+
   if (book.cover) {
     const img = document.createElement("img");
     img.className = "cover";
     img.src = book.cover;
     img.alt = book.title + "の表紙";
-    img.loading = "lazy";
+    img.addEventListener("error", function () { img.replaceWith(placeholder()); });
     wrap.appendChild(img);
   } else {
-    const ph = document.createElement("div");
-    ph.className = "nocover";
-    ph.textContent = "表紙画像なし";
-    wrap.appendChild(ph);
+    wrap.appendChild(placeholder());
   }
 
   const info = document.createElement("div");
@@ -215,7 +222,7 @@ $draw.addEventListener("click", async function () {
   $draw.disabled = true;
   message("本を探しています…");
   try {
-    const book = await pickBook($recent.checked);
+    const book = await pickBook($recent.checked, $withCover.checked);
     if (book) render(book);
     else message("見つかりませんでした。もう一度ひいてください。");
   } catch (e) {
